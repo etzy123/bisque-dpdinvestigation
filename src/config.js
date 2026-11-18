@@ -57,6 +57,8 @@ module.exports = {
 
   // Tags in Help Scout
   tags: {
+    // Eén workflow voor alles: Claude bepaalt het soort onderzoek
+    auto: 'dpd-onderzoek-start',
     done: 'dpd-onderzoek-gestart',
     error: 'dpd-onderzoek-fout',
     test: 'dpd-onderzoek-test',

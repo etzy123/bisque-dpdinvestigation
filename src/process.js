@@ -4,6 +4,34 @@ const { resolveCase, CaseError } = require('./resolve');
 const { buildDpdEmail, euro } = require('./templates');
 const { buildOrderPdf } = require('./pdf');
 const claude = require('./claude');
+const { stripHtml, cutQuotedReply } = require('./parse');
+
+const TRIGGERS = [...Object.keys(scenarios), config.tags.auto];
+const tagForKey = Object.fromEntries(Object.entries(scenarios).map(([tag, s]) => [s.key, tag]));
+
+// Gesprek als leesbare tekst voor Claude (oudste eerst, zonder geciteerde mails)
+function conversationText(conv) {
+  const threads = ((conv._embedded && conv._embedded.threads) || [])
+    .filter((t) => ['customer', 'reply', 'note', 'message'].includes(t.type))
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const who = (t) => (t.type === 'customer' ? 'Klant' : t.type === 'note' ? 'Interne notitie' : 'Bisque Golf');
+  return [`Onderwerp: ${conv.subject || ''}`, ...threads.map((t) => `${who(t)}:\n${cutQuotedReply(stripHtml(t.body))}`)].join('\n\n');
+}
+
+// Welk scenario? Specifieke tag wint; bij de algemene tag beslist Claude.
+async function chooseScenario(conv, triggerTag, deps) {
+  if (triggerTag !== config.tags.auto) return { scenario: scenarios[triggerTag], how: null };
+  const drafter = deps.claude || claude;
+  const cls = await drafter.classify(conversationText(conv));
+  if (cls.soort === 'onzeker') {
+    const err = new CaseError(
+      `Claude kon niet bepalen welk onderzoek nodig is (${cls.reden}). Draai een specifieke workflow: niet ontvangen, incompleet, beschadigd of retour.`
+    );
+    throw err;
+  }
+  const scenario = scenarios[tagForKey[cls.soort]];
+  return { scenario, how: `Soort bepaald door Claude: ${scenario.label} (${cls.reden})` };
+}
 
 const busy = new Set();
 
@@ -60,17 +88,20 @@ async function processConversation(convId, deps) {
     const tags = tagNames(conv);
     if (tags.includes(config.tags.done)) return { skipped: 'al gestart' };
 
-    const triggerTag = Object.keys(scenarios).find((t) => tags.includes(t));
+    const triggerTag = TRIGGERS.find((t) => tags.includes(t));
     if (!triggerTag) return { skipped: 'geen DPD-tag' };
-    const scenario = scenarios[triggerTag];
-    const keep = tags.filter((t) => t !== triggerTag && t !== config.tags.error);
+    const keep = tags.filter((t) => !TRIGGERS.includes(t) && t !== config.tags.error);
 
     let prepared;
+    let scenario = scenarios[triggerTag];
+    let how = null;
     try {
+      ({ scenario, how } = await chooseScenario(conv, triggerTag, deps));
       prepared = await prepare(conv, scenario, deps);
     } catch (err) {
       const msg = err instanceof CaseError ? err.message : `Technische fout: ${err.message}`;
-      await helpscout.addNote(convId, `DPD-onderzoek NIET gestart (${scenario.label}).\n${msg}`);
+      const label = scenario ? ` (${scenario.label})` : '';
+      await helpscout.addNote(convId, `DPD-onderzoek NIET gestart${label}.${how ? `\n${how}` : ''}\n${msg}`);
       await helpscout.setTags(convId, [...keep, config.tags.error]);
       return { error: msg };
     }
@@ -99,6 +130,7 @@ async function processConversation(convId, deps) {
 
     const summary = [
       `${config.dryRun ? '[TEST, niet naar DPD] ' : ''}DPD-onderzoek gestart: ${scenario.label}.`,
+      how || '',
       `Mail naar ${to} verstuurd in een nieuw gesprek, onderwerp ${mail.subject}: ${sent.webUrl || `gesprek #${sent.number}`}`,
       `Order ${c.order.name}, pakket ${c.tracking}, waarde ${euro(c.total, c.currency)}, ${sent.attached} bijlage(n).`,
       sent.skipped.length ? `Niet meegestuurd (groter dan 10 MB): ${sent.skipped.join(', ')}` : '',
@@ -131,4 +163,4 @@ async function processConversation(convId, deps) {
   }
 }
 
-module.exports = { processConversation, prepare, tagNames };
+module.exports = { processConversation, prepare, tagNames, chooseScenario, conversationText, TRIGGERS };

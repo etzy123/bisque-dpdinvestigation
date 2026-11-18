@@ -21,7 +21,7 @@ Er wordt een onderzoek gestart bij vervoerder DPD naar een pakket. Je schrijft t
    Bij een retour: zeg dat we het onderzoek naar de retourzending zijn gestart.
    Beloof NOOIT een terugbetaling, vervanging, vergoeding of uitkomst. Geef DPD of de klant geen schuld.
    Beantwoord wel kort andere concrete vragen uit het bericht als dat kan zonder iets te beloven.
-   Sluit af met een groet en de naam "${config.senderName}" op een eigen regel, zonder bedrijfsgegevens.
+   Eindig met de laatste inhoudelijke zin. Geen afsluitende groet (dus geen "Kind regards", "Met vriendelijke groet", "Best"), geen naam, geen bedrijfsgegevens: de handtekening van Help Scout bevat de groet al.
 
 Algemeen: platte tekst, geen markdown, geen gedachtestreepjes (geen "—" of "–"), gewone komma's en punten.
 Antwoord uitsluitend met JSON: {"dpd_toelichting": "...", "klant_antwoord": "..."}`;
@@ -50,6 +50,23 @@ const clean = (t) =>
     .replace(/\s*[—–]\s*/g, ', ')
     .trim();
 
+// Groet en naam onderaan weghalen: de Help Scout-handtekening bevat die al
+function stripName(text) {
+  const lines = text.split('\n');
+  const greetings = [
+    'kind regards', 'best regards', 'regards', 'best', 'best wishes', 'warm regards', 'cheers', 'thanks', 'thank you',
+    'met vriendelijke groet', 'met vriendelijke groeten', 'vriendelijke groet', 'groeten', 'groet', 'hartelijke groet',
+    'mit freundlichen grüßen', 'mit freundlichen gruessen', 'viele grüße', 'beste grüße', 'liebe grüße',
+    'cordialement', 'bien cordialement', 'saludos', 'un saludo', 'cordiali saluti', 'saluti', 'med vänliga hälsningar', 'venlig hilsen', 'med venlig hilsen',
+  ];
+  const drop = new RegExp(
+    `^(${config.senderName}|Bisque Golf|Team Bisque Golf|Bisque Golf Support|${greetings.join('|')})[.,!]?$`,
+    'i'
+  );
+  while (lines.length && (lines[lines.length - 1].trim() === '' || drop.test(lines[lines.length - 1].trim()))) lines.pop();
+  return lines.join('\n');
+}
+
 function parseJson(text) {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
@@ -59,6 +76,22 @@ function parseJson(text) {
 
 async function draftTexts(c, customerFirstName) {
   if (!config.anthropic.apiKey) return null;
+  const text = await callClaude(SYSTEM, buildPrompt(c, customerFirstName), 1500);
+  const out = parseJson(text);
+  return { dpdParagraph: clean(out.dpd_toelichting), customerReply: stripName(clean(out.klant_antwoord)) };
+}
+
+const CLASSIFY_SYSTEM = `Je helpt de klantenservice van Bisque Golf, een golfwebshop die pakketten met DPD verstuurt.
+Lees het gesprek met de klant en bepaal welk soort DPD-onderzoek nodig is. Kies precies één:
+- "niet-ontvangen": de klant heeft het pakket (nog) niet ontvangen, het is zoek, of volgens DPD bezorgd maar niet bij de klant.
+- "incompleet": het pakket is aangekomen maar was geopend, leeg, of er ontbreekt iets.
+- "beschadigd": het pakket of de inhoud is beschadigd aangekomen.
+- "retour": de klant heeft iets TERUGGESTUURD naar Bisque Golf en die retourzending is niet aangekomen.
+- "onzeker": het is niet duidelijk, het gaat om iets anders (verkeerde maat, verkeerd product, vraag over levertijd zonder probleem), of meerdere soorten tegelijk.
+Kies alleen iets anders dan "onzeker" als het duidelijk uit het gesprek blijkt. Kies "retour" alleen als de klant expliciet iets heeft teruggestuurd.
+Antwoord uitsluitend met JSON: {"soort": "...", "reden": "één korte zin in het Nederlands"}`;
+
+async function callClaude(system, user, maxTokens) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -68,16 +101,23 @@ async function draftTexts(c, customerFirstName) {
     },
     body: JSON.stringify({
       model: config.anthropic.model,
-      max_tokens: 1500,
-      system: SYSTEM,
-      messages: [{ role: 'user', content: buildPrompt(c, customerFirstName) }],
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: user }],
     }),
   });
   if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
   const json = await res.json();
-  const text = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const out = parseJson(text);
-  return { dpdParagraph: clean(out.dpd_toelichting), customerReply: clean(out.klant_antwoord) };
+  return (json.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
 }
 
-module.exports = { draftTexts, buildPrompt, SYSTEM };
+// Bepaalt het scenario: 'niet-ontvangen' | 'incompleet' | 'beschadigd' | 'retour' | 'onzeker'
+async function classify(conversationText) {
+  if (!config.anthropic.apiKey) throw new Error('ANTHROPIC_API_KEY ontbreekt');
+  const out = parseJson(await callClaude(CLASSIFY_SYSTEM, conversationText.slice(0, 12000), 300));
+  const allowed = ['niet-ontvangen', 'incompleet', 'beschadigd', 'retour', 'onzeker'];
+  const soort = allowed.includes(out.soort) ? out.soort : 'onzeker';
+  return { soort, reden: clean(out.reden) };
+}
+
+module.exports = { classify, draftTexts, buildPrompt, SYSTEM, stripName };

@@ -1,11 +1,10 @@
 // Vangnet naast de webhook: elke paar minuten zoeken naar gesprekken met een DPD-tag.
 // Zo start het onderzoek ook als Help Scout geen webhook stuurt (bijv. bij tags van een workflow).
 const config = require('./config');
-const scenarios = require('./scenarios');
-const { processConversation } = require('./process');
+const { processConversation, TRIGGERS } = require('./process');
 
 async function pollOnce(deps) {
-  for (const tag of Object.keys(scenarios)) {
+  for (const tag of TRIGGERS) {
     let list;
     try {
       list = await deps.helpscout.listConversationsByTag(tag);

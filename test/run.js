@@ -29,7 +29,7 @@ const order = {
   }],
 };
 
-const fakeClaude = { draftTexts: async (c) => ({ dpdParagraph: 'De klant meldt dat de doos open was.', customerReply: 'Hi Klaus,\n\nWe started an investigation.\n\nKind regards,\nJelle' }) };
+const fakeClaude = { classify: async (t) => ({ soort: /open|ontbreekt|missing/i.test(t) ? 'incompleet' : /retour|teruggestuurd/i.test(t) ? 'retour' : /\?\?\?/.test(t) ? 'onzeker' : 'niet-ontvangen', reden: 'test' }), draftTexts: async (c) => ({ dpdParagraph: 'De klant meldt dat de doos open was.', customerReply: 'Hi Klaus,\n\nWe started an investigation.\n\nKind regards,\nJelle' }) };
 
 const shopify = {
   findOrderByName: async (n) => (n === '38084' ? order : null),
@@ -197,6 +197,43 @@ const fakeGmail = () => ({ sent: [] });
   {
     const cl = require('../src/claude');
     assert.ok(cl.SYSTEM.includes('JSON'));
+    assert.strictEqual(cl.stripName('Hi Henric,\n\nText.\n\nKind regards,\nJelle\n'), 'Hi Henric,\n\nText.');
+    assert.strictEqual(cl.stripName('Hallo,\n\nTekst.\n\nMet vriendelijke groet,\nBisque Golf'), 'Hallo,\n\nTekst.');
+    assert.strictEqual(cl.stripName('Hallo Klaus,\n\nText.\n\nMit freundlichen Grüßen'), 'Hallo Klaus,\n\nText.');
+    assert.strictEqual(cl.stripName('Hi,\n\nThanks for your patience.'), 'Hi,\n\nThanks for your patience.');
+  }
+
+  // 7e. Eén algemene workflow: Claude kiest het scenario
+  {
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'De doos was open en de polo ontbreekt.', tags: ['dpd-onderzoek-start'] });
+    const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
+    await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
+    assert.match(gm.sent[0].text, /geopend, leeg of incompleet/);
+    assert.match(hs.log.notes[0], /Soort bepaald door Claude: pakket geopend, leeg of incompleet/);
+    assert.ok(!hs.log.tags.includes('dpd-onderzoek-start'));
+  }
+  {
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'Hoe zit het ???', tags: ['dpd-onderzoek-start'] });
+    const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
+    const r = await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
+    assert.ok(r.error); assert.strictEqual(gm.sent.length, 0);
+    assert.match(hs.log.notes[0], /Claude kon niet bepalen/);
+    assert.ok(hs.log.tags.includes('dpd-onderzoek-fout')); assert.ok(!hs.log.tags.includes('dpd-onderzoek-start'));
+  }
+  {
+    // Claude denkt retour, maar er is geen apart retour-pakketnummer: niets versturen
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'Ik heb het teruggestuurd maar jullie hebben het niet', tags: ['dpd-onderzoek-start'] });
+    const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
+    const r = await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
+    assert.ok(r.error); assert.strictEqual(gm.sent.length, 0);
+    assert.match(hs.log.notes[0], /retour-pakketnummer/);
+  }
+  {
+    // Specifieke tag wint: Claude classify wordt niet gebruikt
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'De doos was open', tags: ['dpd-beschadigd'] });
+    const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
+    await processConversation(111, { helpscout: hs, shopify, claude: { ...fakeClaude, classify: async () => { throw new Error('mag niet'); } } });
+    assert.match(gm.sent[0].text, /beschadigd bij de ontvanger/);
   }
 
   // 8. Poller verwerkt gesprekken met een DPD-tag
