@@ -2,11 +2,10 @@ const express = require('express');
 const config = require('./config');
 const helpscout = require('./helpscout');
 const shopify = require('./shopify');
-const gmail = require('./gmail');
 const scenarios = require('./scenarios');
 const { processConversation, prepare, tagNames } = require('./process');
 
-const deps = { helpscout, shopify, gmail };
+const deps = { helpscout, shopify };
 const app = express();
 
 app.get('/health', (_req, res) => res.json({ ok: true, dryRun: config.dryRun }));

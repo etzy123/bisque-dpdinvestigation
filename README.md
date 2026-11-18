@@ -5,8 +5,11 @@ Start een DPD-onderzoek met één klik in Help Scout.
 1. Je checkt de tracking van het pakket (vaak ligt het nog bij een ParcelShop of is het onderweg).
 2. In het gesprek kies je de handmatige workflow, bijvoorbeeld **DPD onderzoek: niet ontvangen**. Die zet de tag `dpd-niet-ontvangen`.
 3. Help Scout stuurt een webhook naar deze service op Railway.
-4. De service zoekt de order in Shopify, pakt pakketnummer, verzenddatum, artikelen en waarde, maakt een orderoverzicht (PDF), neemt de foto's van de klant mee en mailt alles vanaf support@bisquegolf.com naar customerservice@dpd.nl. Onderwerp = pakketnummer, net als nu, dus de DPD-onderzoeken-tracker herkent de thread.
-5. In Help Scout komt een notitie met wat er verstuurd is. Tags worden: `dpd-onderzoek-gestart`, `dpd ticket`, `waiting on dpd`. Status gaat naar Pending.
+4. De service zoekt de order in Shopify, pakt pakketnummer, verzenddatum, artikelen en waarde, maakt een orderoverzicht (PDF) en neemt de foto's van de klant mee.
+5. Hij maakt in Help Scout een **nieuw gesprek** met customerservice@dpd.nl (onderwerp = pakketnummer) en verstuurt daarin de mail met bijlagen vanaf support@. Antwoorden van DPD (casenummer, updates, claim) komen in dat gesprek binnen. Tags op dat gesprek: `dpd-onderzoek`, `waiting on dpd`. Bovenaan staat een notitie met een link naar het klantgesprek.
+6. In het klantgesprek komt een notitie met een link naar het DPD-gesprek. Tags worden: `dpd-onderzoek-gestart`, `dpd ticket`, `waiting on dpd`. Status gaat naar Pending.
+
+Help Scout accepteert bijlagen tot ongeveer 10 MB per bestand. Grotere foto's worden overgeslagen en in de notitie genoemd.
 
 DPD vraagt bij elk onderzoek om (1) inhoud en waarde, (2) factuur of pakbon, (3) omschrijving van de verpakking. Die zitten er nu meteen in, zodat DPD niet eerst terugmailt.
 
@@ -54,26 +57,17 @@ Gebruik een app uit het Dev Dashboard die in dezelfde Shopify-organisatie zit al
 
 Zet Client ID en Client secret in `SHOPIFY_CLIENT_ID` en `SHOPIFY_CLIENT_SECRET`. De service haalt zelf elke 24 uur een nieuwe token (client credentials grant), dus geen statische token die verloopt.
 
-### 3. Gmail (support@bisquegolf.com)
-Gebruik dezelfde Google OAuth-client als de tracker, maar maak een refresh token met de scope `gmail.send`:
+### 3. Help Scout API-app
+Profiel (rechtsboven) > **My Apps** > **Create My App**. Redirect URL mag de Railway-URL zijn. App ID en App Secret in `HELPSCOUT_APP_ID` en `HELPSCOUT_APP_SECRET`. De mails aan DPD gaan uit op naam van de gebruiker die de app maakt, dus maak hem aan met jouw account (of een account met toegang tot de support-mailbox).
 
-```
-GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... npm run gmail-token
-```
-
-Log in als support@bisquegolf.com. Is de OAuth-client van het type "Web application", voeg dan eerst `http://localhost:5555/callback` toe als redirect URI.
-
-### 4. Help Scout API-app
-Profiel (rechtsboven) > **My Apps** > **Create My App**. Redirect URL mag de Railway-URL zijn. App ID en App Secret in `HELPSCOUT_APP_ID` en `HELPSCOUT_APP_SECRET`.
-
-### 5. Help Scout webhook
+### 4. Help Scout webhook
 **Manage > Apps > Webhooks**:
 - Callback URL: `https://<jouw-railway-url>/helpscout/webhook`
 - Secret Key: hetzelfde als `HELPSCOUT_WEBHOOK_SECRET`
 - Events: **Conversation > Tags Updated**
 - Mailbox: support
 
-### 6. Help Scout handmatige workflows
+### 5. Help Scout handmatige workflows
 **Manage > Workflows > New Workflow > Manual**, vier keer:
 
 | Naam | Actie |
@@ -90,5 +84,10 @@ Optioneel kun je per workflow een tweede actie **Reply to the Customer** toevoeg
 - `npm test` draait de tests met nepdata.
 - `GET /preview/<gesprek-id>?tag=dpd-niet-ontvangen` (Basic Auth, wachtwoord = `ADMIN_PASSWORD`) laat de mail zien die verstuurd zou worden, zonder te versturen. Het gesprek-id staat in de Help Scout-URL.
 - `GET /health` geeft `{ ok: true }`.
+
+Met `DRY_RUN=true` gaat de mail naar `DRY_RUN_TO` (ook als nieuw Help Scout-gesprek, met tag `dpd-onderzoek-test`). Controleer daarin:
+- staan de bijlagen erbij;
+- staat de handtekening er niet dubbel in (dan `INCLUDE_SIGNATURE=false`);
+- komt jouw antwoord op die testmail terug in hetzelfde Help Scout-gesprek.
 
 Daarna `DRY_RUN=false` zetten.

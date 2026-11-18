@@ -37,7 +37,7 @@ async function processConversation(convId, deps) {
   if (busy.has(convId)) return { skipped: 'bezig' };
   busy.add(convId);
   try {
-    const { helpscout, gmail } = deps;
+    const { helpscout } = deps;
     const conv = await helpscout.getConversation(convId);
     const tags = tagNames(conv);
     if (tags.includes(config.tags.done)) return { skipped: 'al gestart' };
@@ -59,13 +59,23 @@ async function processConversation(convId, deps) {
 
     const { c, mail } = prepared;
     const to = config.dryRun ? config.dryRunTo : config.dpdTo;
-    const sent = await gmail.sendMail({ ...mail, to });
+    const customerConvUrl = `https://secure.helpscout.net/conversation/${conv.id}/${conv.number}`;
+    const sent = await helpscout.sendDpdEmail({
+      mailboxId: config.helpscout.mailboxId || conv.mailboxId,
+      to,
+      subject: mail.subject,
+      text: mail.text,
+      attachments: mail.attachments,
+      tags: config.dryRun ? [config.tags.test] : config.tags.onDpdConversation,
+      noteText: `DPD-onderzoek (${scenario.label}) voor order ${c.order.name}, pakket ${c.tracking}.\nKlantgesprek: ${customerConvUrl}`,
+    });
 
     const summary = [
       `${config.dryRun ? '[TEST, niet naar DPD] ' : ''}DPD-onderzoek gestart: ${scenario.label}.`,
-      `Mail verstuurd naar ${to} vanaf support@bisquegolf.com, onderwerp ${mail.subject}.`,
-      `Order ${c.order.name}, pakket ${c.tracking}, waarde ${euro(c.total, c.currency)}, ${mail.attachments.length} bijlage(n).`,
-      config.dryRun ? '' : 'DPD stuurt een automatische bevestiging met casenummer; de tracker pakt de thread op.',
+      `Mail naar ${to} verstuurd in een nieuw gesprek, onderwerp ${mail.subject}: ${sent.webUrl || `gesprek #${sent.number}`}`,
+      `Order ${c.order.name}, pakket ${c.tracking}, waarde ${euro(c.total, c.currency)}, ${sent.attached} bijlage(n).`,
+      sent.skipped.length ? `Niet meegestuurd (groter dan 10 MB): ${sent.skipped.join(', ')}` : '',
+      config.dryRun ? '' : 'Antwoorden van DPD (casenummer, updates) komen binnen in dat DPD-gesprek.',
     ].filter(Boolean).join('\n');
     await helpscout.addNote(convId, summary);
 

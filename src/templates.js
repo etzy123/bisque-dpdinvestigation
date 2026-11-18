@@ -76,9 +76,11 @@ function buildDpdEmail(c) {
   L.push('Hiermee is alle informatie compleet om het onderzoek direct te starten.', '');
   L.push('Met vriendelijke groet,', '');
   L.push(config.senderName);
-  L.push('Bisque Golf and Leisure BV');
-  L.push('support@bisquegolf.com | +31 20 261 0187');
-  L.push('Kuiperij 20, 1185 XS Amstelveen');
+  if (config.includeSignature) {
+    L.push('Bisque Golf and Leisure BV');
+    L.push('support@bisquegolf.com | +31 20 261 0187');
+    L.push('Kuiperij 20, 1185 XS Amstelveen');
+  }
 
   return { subject: c.tracking, text: L.join('\n') };
 }

@@ -1,19 +1,17 @@
 {
   "name": "dpd-onderzoek-starter",
   "version": "1.0.0",
-  "description": "Start DPD-onderzoeken vanuit Help Scout: tag een gesprek, de service haalt de order uit Shopify en mailt DPD vanaf support@bisquegolf.com.",
+  "description": "Start DPD-onderzoeken vanuit Help Scout: tag een gesprek, de service haalt de order uit Shopify en mailt DPD via Help Scout vanaf support@bisquegolf.com.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node test/run.js",
-    "gmail-token": "node scripts/get-gmail-token.js"
+    "test": "node test/run.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "express": "^4.21.2",
-    "nodemailer": "^6.9.16",
     "pdfkit": "^0.15.2"
   }
 }

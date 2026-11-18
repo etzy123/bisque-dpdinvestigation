@@ -18,6 +18,8 @@ module.exports = {
     appId: env('HELPSCOUT_APP_ID'),
     appSecret: env('HELPSCOUT_APP_SECRET'),
     webhookSecret: env('HELPSCOUT_WEBHOOK_SECRET'),
+    // Optioneel: anders dezelfde mailbox als het klantgesprek
+    mailboxId: env('HELPSCOUT_MAILBOX_ID') ? Number(env('HELPSCOUT_MAILBOX_ID')) : null,
   },
 
   // Shopify: of een vaste token, of client credentials (Dev Dashboard app)
@@ -29,20 +31,13 @@ module.exports = {
     apiVersion: env('SHOPIFY_API_VERSION', '2026-10'),
   },
 
-  // Gmail (support@bisquegolf.com), scope gmail.send
-  gmail: {
-    clientId: env('GOOGLE_CLIENT_ID'),
-    clientSecret: env('GOOGLE_CLIENT_SECRET'),
-    refreshToken: env('GOOGLE_REFRESH_TOKEN'),
-    from: env('MAIL_FROM', 'Bisque Golf Support <support@bisquegolf.com>'),
-  },
-
   dpdTo: env('DPD_TO', 'customerservice@dpd.nl'),
   // Testmodus: mail gaat naar DRY_RUN_TO in plaats van DPD
   dryRun: bool('DRY_RUN', true),
   dryRunTo: env('DRY_RUN_TO', 'jelle@bisquegolf.com'),
 
   senderName: env('SENDER_NAME', 'Jelle'),
+  includeSignature: bool('INCLUDE_SIGNATURE', true),
   packaging: env(
     'PACKAGING_DESCRIPTION',
     'Lage rechthoekige kartonnen doos (autolock), zonder logo, dichtgeplakt met groene Bisque Golf tape. Transparante tape of een andere doos betekent dat het pakket na vertrek bij ons is geopend en opnieuw verpakt.'
@@ -57,9 +52,11 @@ module.exports = {
     error: 'dpd-onderzoek-fout',
     test: 'dpd-onderzoek-test',
     addOnSuccess: ['dpd ticket', 'waiting on dpd'],
+    // Tags op het nieuwe DPD-gesprek
+    onDpdConversation: ['dpd-onderzoek', 'waiting on dpd'],
   },
 
   // Max bijlagen van de klant (foto's) die mee gaan naar DPD
   maxCustomerAttachments: Number(env('MAX_CUSTOMER_ATTACHMENTS', 8)),
-  maxAttachmentBytes: Number(env('MAX_ATTACHMENT_BYTES', 18 * 1024 * 1024)),
+  maxAttachmentBytes: Number(env('MAX_ATTACHMENT_BYTES', 25 * 1024 * 1024)),
 };
