@@ -67,9 +67,12 @@ const toHtml = (text) => escapeHtml(text).replace(/\n/g, '<br>');
 const MAX_HS_ATTACHMENT = 10 * 1024 * 1024;
 
 // Stuurt de mail aan DPD als nieuw Help Scout-gesprek vanuit de support-mailbox.
-// Stap 1: gesprek aanmaken met een interne notitie (verwijzing naar het klantgesprek).
-// Stap 2: antwoord (reply) met tekst en bijlagen: dit is de mail die naar DPD gaat.
+// Het gesprek wordt in één keer aangemaakt met een uitgaande reply (de mail aan DPD, met bijlagen).
+// Daarna komt er een interne notitie bij met een link naar het klantgesprek.
 async function sendDpdEmail({ mailboxId, to, subject, text, attachments = [], tags = [], noteText, status = 'pending' }) {
+  const used = attachments.filter((a) => a.content.length <= MAX_HS_ATTACHMENT);
+  const skipped = attachments.filter((a) => a.content.length > MAX_HS_ATTACHMENT).map((a) => a.filename);
+
   const created = await hsRaw('/conversations', {
     method: 'POST',
     body: {
@@ -79,31 +82,40 @@ async function sendDpdEmail({ mailboxId, to, subject, text, attachments = [], ta
       status,
       customer: { email: to },
       tags,
-      threads: [{ type: 'note', text: toHtml(noteText || subject) }],
+      threads: [
+        {
+          type: 'reply',
+          customer: { email: to },
+          text: toHtml(text),
+          attachments: used.map((a) => ({
+            fileName: a.filename,
+            mimeType: a.contentType,
+            data: a.content.toString('base64'),
+          })),
+        },
+      ],
     },
   });
   const id = Number(created.headers.get('resource-id'));
   const webUrl = created.headers.get('web-location');
-  const conv = await hs(`/conversations/${id}`);
-  const customerId = conv.primaryCustomer && conv.primaryCustomer.id;
-
-  const used = attachments.filter((a) => a.content.length <= MAX_HS_ATTACHMENT);
-  const skipped = attachments.filter((a) => a.content.length > MAX_HS_ATTACHMENT).map((a) => a.filename);
-
-  await hs(`/conversations/${id}/reply`, {
-    method: 'POST',
-    body: {
-      customer: customerId ? { id: customerId } : { email: to },
-      text: toHtml(text),
-      status,
-      attachments: used.map((a) => ({
-        fileName: a.filename,
-        mimeType: a.contentType,
-        data: a.content.toString('base64'),
-      })),
-    },
-  });
-  return { id, number: conv.number, webUrl, attached: used.length, skipped };
+  if (noteText) {
+    try {
+      await addNote(id, toHtml(noteText));
+    } catch (e) {
+      console.error(`[dpd-gesprek ${id}] notitie toevoegen mislukt:`, e.message);
+    }
+  }
+  let number = null;
+  try {
+    number = (await hs(`/conversations/${id}`)).number;
+  } catch {}
+  return { id, number, webUrl, attached: used.length, skipped };
 }
 
-module.exports = { verifySignature, getConversation, getAttachment, addNote, setTags, setStatus, sendDpdEmail };
+// Alle gesprekken (elke status) met deze tag
+async function listConversationsByTag(tag) {
+  const json = await hs(`/conversations?status=all&tag=${encodeURIComponent(tag)}`);
+  return (json && json._embedded && json._embedded.conversations) || [];
+}
+
+module.exports = { listConversationsByTag, verifySignature, getConversation, getAttachment, addNote, setTags, setStatus, sendDpdEmail };
