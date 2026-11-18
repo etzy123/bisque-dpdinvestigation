@@ -25,6 +25,7 @@ function buildDpdEmail(c) {
   const s = c.scenario;
   const L = [];
   L.push('Goedemiddag,', '', s.intro, '');
+  if (c.dpdParagraph) L.push(c.dpdParagraph, '');
 
   L.push('Pakketgegevens');
   L.push(`- Pakketnummer: ${c.tracking}`);

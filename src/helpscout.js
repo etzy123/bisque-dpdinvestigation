@@ -112,10 +112,18 @@ async function sendDpdEmail({ mailboxId, to, subject, text, attachments = [], ta
   return { id, number, webUrl, attached: used.length, skipped };
 }
 
+// Conceptantwoord (draft) in het klantgesprek: wordt niet verstuurd tot iemand op Send klikt
+async function createDraftReply(conversationId, customerId, text) {
+  return hs(`/conversations/${conversationId}/reply`, {
+    method: 'POST',
+    body: { customer: { id: customerId }, text: toHtml(text), draft: true },
+  });
+}
+
 // Alle gesprekken (elke status) met deze tag
 async function listConversationsByTag(tag) {
   const json = await hs(`/conversations?status=all&tag=${encodeURIComponent(tag)}`);
   return (json && json._embedded && json._embedded.conversations) || [];
 }
 
-module.exports = { listConversationsByTag, verifySignature, getConversation, getAttachment, addNote, setTags, setStatus, sendDpdEmail };
+module.exports = { createDraftReply, listConversationsByTag, verifySignature, getConversation, getAttachment, addNote, setTags, setStatus, sendDpdEmail };

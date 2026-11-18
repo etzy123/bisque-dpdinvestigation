@@ -3,6 +3,7 @@ const scenarios = require('./scenarios');
 const { resolveCase, CaseError } = require('./resolve');
 const { buildDpdEmail, euro } = require('./templates');
 const { buildOrderPdf } = require('./pdf');
+const claude = require('./claude');
 
 const busy = new Set();
 
@@ -22,6 +23,23 @@ async function loadAttachments(c, convId, helpscout) {
 async function prepare(conv, scenario, deps) {
   const c = await resolveCase(conv, scenario, deps);
   await loadAttachments(c, conv.id, deps.helpscout);
+
+  // Claude: toelichting voor DPD en conceptantwoord voor de klant (optioneel, mag mislukken)
+  c.claudeError = null;
+  c.customerReply = null;
+  const drafter = deps.claude || claude;
+  try {
+    const firstName = conv.primaryCustomer && conv.primaryCustomer.first;
+    const texts = await drafter.draftTexts(c, firstName);
+    if (texts) {
+      c.dpdParagraph = texts.dpdParagraph;
+      c.customerReply = texts.customerReply;
+    }
+  } catch (e) {
+    c.claudeError = e.message;
+    console.error(`[gesprek ${conv.id}] Claude mislukt:`, e.message);
+  }
+
   const mail = buildDpdEmail(c);
   const pdf = await buildOrderPdf(c);
   const safeOrder = c.order.name.replace(/[^\w-]/g, '');
@@ -86,7 +104,20 @@ async function processConversation(convId, deps) {
       sent.skipped.length ? `Niet meegestuurd (groter dan 10 MB): ${sent.skipped.join(', ')}` : '',
       config.dryRun ? '' : 'Antwoorden van DPD (casenummer, updates) komen binnen in dat DPD-gesprek.',
     ].filter(Boolean).join('\n');
-    await helpscout.addNote(convId, summary);
+    // Conceptantwoord aan de klant als draft in het klantgesprek
+    let draftInfo = '';
+    if (config.customerDraft && c.customerReply && conv.primaryCustomer && conv.primaryCustomer.id) {
+      try {
+        await helpscout.createDraftReply(convId, conv.primaryCustomer.id, c.customerReply);
+        draftInfo = 'Conceptantwoord voor de klant staat klaar als draft: nalezen en versturen.';
+      } catch (e) {
+        draftInfo = `Conceptantwoord maken mislukt: ${e.message}`;
+      }
+    } else if (c.claudeError) {
+      draftInfo = `Claude niet beschikbaar (${c.claudeError}); mail is zonder toelichting verstuurd en er is geen conceptantwoord.`;
+    }
+
+    await helpscout.addNote(convId, draftInfo ? `${summary}\n${draftInfo}` : summary);
 
     const newTags = config.dryRun
       ? [...keep, config.tags.test]

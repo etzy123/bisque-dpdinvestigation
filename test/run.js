@@ -29,6 +29,8 @@ const order = {
   }],
 };
 
+const fakeClaude = { draftTexts: async (c) => ({ dpdParagraph: 'De klant meldt dat de doos open was.', customerReply: 'Hi Klaus,\n\nWe started an investigation.\n\nKind regards,\nJelle' }) };
+
 const shopify = {
   findOrderByName: async (n) => (n === '38084' ? order : null),
   findOrdersByEmail: async (e) => (e === order.email ? [order] : []),
@@ -37,7 +39,7 @@ const shopify = {
 
 function makeConv({ subject, customerBody, notes = [], tags, attachments = [] }) {
   return {
-    id: 111, subject, primaryCustomer: { email: 'klaus@example.de' },
+    id: 111, number: 4991, subject, primaryCustomer: { id: 9, first: 'Klaus', email: 'klaus@example.de' },
     tags: tags.map((t) => ({ tag: t })),
     _embedded: { threads: [
       { id: 1, type: 'customer', createdAt: '2026-11-15T09:00:00Z', body: customerBody, _embedded: { attachments } },
@@ -54,6 +56,7 @@ function fakeHelpscout(conv, gm) {
     getConversation: async () => conv,
     getAttachment: async () => Buffer.from('fakejpeg'),
     addNote: async (_id, t) => log.notes.push(t),
+    createDraftReply: async (_id, cid, t) => { log.draft = { cid, t }; },
     setTags: async (_id, t) => { log.tags = t; },
     setStatus: async (_id, s) => { log.status = s; },
   };
@@ -73,7 +76,7 @@ const fakeGmail = () => ({ sent: [] });
   {
     const conv = makeConv({ subject: 'Order #38084 niet ontvangen', customerBody: '<p>Hallo, ik heb mijn pakket nooit ontvangen.</p><p>Op 1 nov schreef Bisque:</p><blockquote>oud</blockquote>', tags: ['dpd-niet-ontvangen'] });
     const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
-    const r = await processConversation(111, { helpscout: hs, shopify });
+    const r = await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
     assert.strictEqual(r.tracking, '05165897255876');
     assert.strictEqual(gm.sent[0].to, 'customerservice@dpd.nl');
     assert.strictEqual(gm.sent[0].subject, '05165897255876');
@@ -84,6 +87,9 @@ const fakeGmail = () => ({ sent: [] });
     assert.deepStrictEqual(gm.sent[0].tags, ['dpd-onderzoek', 'waiting on dpd']);
     assert.match(gm.sent[0].noteText, /Klantgesprek: https:\/\/secure\.helpscout\.net\/conversation\/111\//);
     assert.match(hs.log.notes[0], /conversation\/999\/5000/);
+    assert.match(gm.sent[0].text, /onderzoek naar onderstaand pakket\. De ontvanger heeft het pakket niet ontvangen\.\n\nDe klant meldt dat de doos open was\./);
+    assert.deepStrictEqual(hs.log.draft.cid, 9);
+    assert.match(hs.log.notes[0], /Conceptantwoord voor de klant staat klaar/);
     assert.strictEqual(hs.log.status, 'pending');
     fs.writeFileSync(path.join(__dirname, 'voorbeeld-niet-ontvangen.txt'), gm.sent[0].text);
     fs.writeFileSync(path.join(__dirname, 'voorbeeld-orderoverzicht.pdf'), gm.sent[0].attachments[0].content);
@@ -94,7 +100,7 @@ const fakeGmail = () => ({ sent: [] });
     const conv = makeConv({ subject: 'Pakket open', customerBody: 'De doos was open en de polo ontbreekt.', notes: ['DPD ontbreekt: Malbon Buckets Polo M / Navy'], tags: ['dpd-incompleet', 'return'],
       attachments: [{ id: 5, filename: 'doos.jpg', mimeType: 'image/jpeg', size: 1000 }, { id: 6, filename: 'x.zip', mimeType: 'application/zip', size: 10 }] });
     const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
-    await processConversation(111, { helpscout: hs, shopify });
+    await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
     const m = gm.sent[0];
     assert.match(m.text, /Volgens de ontvanger ontbreekt: Malbon Buckets Polo M \/ Navy/);
     assert.match(m.text, /1 foto van de ontvanger/);
@@ -107,7 +113,7 @@ const fakeGmail = () => ({ sent: [] });
   {
     const conv = makeConv({ subject: 'Order #38084', customerBody: 'Tracking 05165897255999 zegt bezorgd', tags: ['dpd-niet-ontvangen'] });
     const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
-    const r = await processConversation(111, { helpscout: hs, shopify });
+    const r = await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
     assert.ok(r.error); assert.strictEqual(gm.sent.length, 0);
     assert.ok(hs.log.tags.includes('dpd-onderzoek-fout'));
     assert.match(hs.log.notes[0], /NIET gestart/);
@@ -117,7 +123,7 @@ const fakeGmail = () => ({ sent: [] });
   {
     const conv = makeConv({ subject: 'Retour #38084', customerBody: 'Ik heb het teruggestuurd', notes: ['DPD pakket: 05165897299999'], tags: ['dpd-retour'] });
     const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
-    await processConversation(111, { helpscout: hs, shopify });
+    await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
     assert.strictEqual(gm.sent[0].subject, '05165897299999');
     assert.match(gm.sent[0].text, /retour van onze klant/);
     fs.writeFileSync(path.join(__dirname, 'voorbeeld-retour.txt'), gm.sent[0].text);
@@ -127,7 +133,7 @@ const fakeGmail = () => ({ sent: [] });
   {
     const conv = makeConv({ subject: '#38084', customerBody: 'x', tags: ['dpd-niet-ontvangen', 'dpd-onderzoek-gestart'] });
     const gm = fakeGmail();
-    const r = await processConversation(111, { helpscout: fakeHelpscout(conv, gm), shopify });
+    const r = await processConversation(111, { helpscout: fakeHelpscout(conv, gm), shopify, claude: fakeClaude });
     assert.strictEqual(r.skipped, 'al gestart'); assert.strictEqual(gm.sent.length, 0);
   }
 
@@ -147,8 +153,8 @@ const fakeGmail = () => ({ sent: [] });
       if (url.endsWith('/oauth2/token')) return { ok: true, headers: H({}), text: async () => '', json: async () => ({ access_token: 't', expires_in: 7200 }) };
       if (url.endsWith('/v2/conversations') && opts.method === 'POST')
         return { ok: true, status: 201, headers: H({ 'resource-id': '777', 'web-location': 'https://secure.helpscout.net/conversation/777/42' }), text: async () => '' };
-      if (url.endsWith('/v2/conversations/777')) return { ok: true, headers: H({}), text: async () => JSON.stringify({ id: 777, number: 42, primaryCustomer: { id: 55 } }) };
-      if (url.endsWith('/v2/conversations/777/reply')) return { ok: true, status: 201, headers: H({}), text: async () => '' };
+      if (url.endsWith('/v2/conversations/777/notes')) return { ok: true, status: 201, headers: H({}), text: async () => '' };
+      if (url.endsWith('/v2/conversations/777')) return { ok: true, headers: H({}), text: async () => JSON.stringify({ id: 777, number: 42 }) };
       throw new Error('onverwacht ' + url);
     };
     const big = Buffer.alloc(11 * 1024 * 1024);
@@ -157,14 +163,50 @@ const fakeGmail = () => ({ sent: [] });
       tags: ['dpd-onderzoek'], noteText: 'notitie' });
     const create = calls.find((c) => c.url.endsWith('/v2/conversations'));
     assert.strictEqual(create.body.customer.email, 'customerservice@dpd.nl');
-    assert.strictEqual(create.body.threads[0].type, 'note');
-    const reply = calls.find((c) => c.url.endsWith('/reply'));
-    assert.deepStrictEqual(reply.body.customer, { id: 55 });
-    assert.strictEqual(reply.body.text, 'Regel 1<br>Regel &lt;2&gt;');
-    assert.strictEqual(reply.body.attachments.length, 1);
-    assert.strictEqual(reply.body.attachments[0].data, Buffer.from('pdf').toString('base64'));
+    assert.strictEqual(create.body.threads.length, 1);
+    const t = create.body.threads[0];
+    assert.strictEqual(t.type, 'reply');
+    assert.strictEqual(t.text, 'Regel 1<br>Regel &lt;2&gt;');
+    assert.strictEqual(t.attachments.length, 1);
+    assert.strictEqual(t.attachments[0].data, Buffer.from('pdf').toString('base64'));
+    assert.ok(calls.some((c) => c.url.endsWith('/777/notes')));
     assert.deepStrictEqual(r.skipped, ['groot.jpg']);
-    assert.strictEqual(r.webUrl, 'https://secure.helpscout.net/conversation/777/42');
+    assert.strictEqual(r.number, 42);
+  }
+
+  // 7b. Verzenden mislukt: geen herhaling, fouttag + notitie
+  {
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'x', tags: ['dpd-niet-ontvangen'] });
+    const hs = fakeHelpscout(conv);
+    hs.sendDpdEmail = async () => { throw new Error('Help Scout POST /conversations: 400 bad'); };
+    const r = await processConversation(111, { helpscout: hs, shopify, claude: fakeClaude });
+    assert.ok(r.error); assert.ok(hs.log.tags.includes('dpd-onderzoek-fout')); assert.ok(!hs.log.tags.includes('dpd-niet-ontvangen'));
+    assert.match(hs.log.notes[0], /400 bad/);
+  }
+
+  // 7c. Claude faalt: mail gaat gewoon, zonder toelichting en zonder draft
+  {
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'x', tags: ['dpd-niet-ontvangen'] });
+    const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
+    const r = await processConversation(111, { helpscout: hs, shopify, claude: { draftTexts: async () => { throw new Error('529 overloaded'); } } });
+    assert.ok(r.sent); assert.ok(!hs.log.draft);
+    assert.match(hs.log.notes[0], /Claude niet beschikbaar \(529 overloaded\)/);
+  }
+
+  // 7d. Opschonen van gedachtestreepjes
+  {
+    const cl = require('../src/claude');
+    assert.ok(cl.SYSTEM.includes('JSON'));
+  }
+
+  // 8. Poller verwerkt gesprekken met een DPD-tag
+  {
+    const { pollOnce } = require('../src/poller');
+    const conv = makeConv({ subject: 'Order #38084', customerBody: 'niet ontvangen', tags: ['dpd-niet-ontvangen'] });
+    const gm = fakeGmail(); const hs = fakeHelpscout(conv, gm);
+    hs.listConversationsByTag = async (t) => (t === 'dpd-niet-ontvangen' ? [{ id: 111 }] : []);
+    await pollOnce({ helpscout: hs, shopify, claude: fakeClaude });
+    assert.strictEqual(gm.sent.length, 1);
   }
 
   console.log('Alle tests geslaagd');

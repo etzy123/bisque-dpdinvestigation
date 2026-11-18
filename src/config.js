@@ -31,6 +31,13 @@ module.exports = {
     apiVersion: env('SHOPIFY_API_VERSION', '2026-10'),
   },
 
+  // Claude (Anthropic API): toelichting voor DPD + conceptantwoord aan de klant. Zonder key staat het uit.
+  anthropic: {
+    apiKey: env('ANTHROPIC_API_KEY'),
+    model: env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
+  },
+  customerDraft: bool('CUSTOMER_DRAFT', true),
+
   dpdTo: env('DPD_TO', 'customerservice@dpd.nl'),
   // Testmodus: mail gaat naar DRY_RUN_TO in plaats van DPD
   dryRun: bool('DRY_RUN', true),
@@ -44,6 +51,8 @@ module.exports = {
   ),
 
   setPending: bool('SET_PENDING', true),
+  // Vangnet: elke X seconden zoeken naar DPD-tags (0 = uit)
+  pollSeconds: Number(env('POLL_SECONDS', 60)),
   adminPassword: env('ADMIN_PASSWORD'),
 
   // Tags in Help Scout

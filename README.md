@@ -9,6 +9,13 @@ Start een DPD-onderzoek met één klik in Help Scout.
 5. Hij maakt in Help Scout een **nieuw gesprek** met customerservice@dpd.nl (onderwerp = pakketnummer) en verstuurt daarin de mail met bijlagen vanaf support@. Antwoorden van DPD (casenummer, updates, claim) komen in dat gesprek binnen. Tags op dat gesprek: `dpd-onderzoek`, `waiting on dpd`. Bovenaan staat een notitie met een link naar het klantgesprek.
 6. In het klantgesprek komt een notitie met een link naar het DPD-gesprek. Tags worden: `dpd-onderzoek-gestart`, `dpd ticket`, `waiting on dpd`. Status gaat naar Pending.
 
+### Claude
+Met `ANTHROPIC_API_KEY` ingevuld doet Claude twee dingen per onderzoek:
+- een korte toelichting voor DPD op basis van het bericht van de klant (wat ontbreekt, schade, wat de tracking zei). Ordergegevens, waarde en bijlagen blijven uit Shopify komen, die schrijft Claude niet;
+- een conceptantwoord aan de klant, in de taal van de klant, als **draft** in het klantgesprek. Het belooft alleen dat het onderzoek loopt (5 tot 10 werkdagen), geen terugbetaling of vervanging. Jij leest het na en klikt Send.
+
+Als Claude niet werkt, gaat de mail aan DPD gewoon zonder toelichting en staat dat in de notitie. Kosten: enkele centen per onderzoek. In `/preview/<id>` zie je ook het conceptantwoord.
+
 Help Scout accepteert bijlagen tot ongeveer 10 MB per bestand. Grotere foto's worden overgeslagen en in de notitie genoemd.
 
 DPD vraagt bij elk onderzoek om (1) inhoud en waarde, (2) factuur of pakbon, (3) omschrijving van de verpakking. Die zitten er nu meteen in, zodat DPD niet eerst terugmailt.
