@@ -90,7 +90,8 @@ const fakeGmail = () => ({ sent: [] });
     assert.match(gm.sent[0].text, /onderzoek naar onderstaand pakket\. De ontvanger heeft het pakket niet ontvangen\.\n\nDe klant meldt dat de doos open was\./);
     assert.deepStrictEqual(hs.log.draft.cid, 9);
     assert.match(hs.log.notes[0], /Conceptantwoord voor de klant staat klaar/);
-    assert.strictEqual(hs.log.status, 'pending');
+    assert.strictEqual(hs.log.status, 'closed');
+    assert.strictEqual(gm.sent[0].finalStatus, 'closed');
     fs.writeFileSync(path.join(__dirname, 'voorbeeld-niet-ontvangen.txt'), gm.sent[0].text);
     fs.writeFileSync(path.join(__dirname, 'voorbeeld-orderoverzicht.pdf'), gm.sent[0].attachments[0].content);
   }

@@ -7,7 +7,7 @@ Start een DPD-onderzoek met één klik in Help Scout.
 3. Help Scout stuurt een webhook naar deze service op Railway.
 4. De service zoekt de order in Shopify, pakt pakketnummer, verzenddatum, artikelen en waarde, maakt een orderoverzicht (PDF) en neemt de foto's van de klant mee.
 5. Hij maakt in Help Scout een **nieuw gesprek** met customerservice@dpd.nl (onderwerp = pakketnummer) en verstuurt daarin de mail met bijlagen vanaf support@. Antwoorden van DPD (casenummer, updates, claim) komen in dat gesprek binnen. Tags op dat gesprek: `dpd-onderzoek`, `waiting on dpd`. Bovenaan staat een notitie met een link naar het klantgesprek.
-6. In het klantgesprek komt een notitie met een link naar het DPD-gesprek. Tags worden: `dpd-onderzoek-gestart`, `dpd ticket`, `waiting on dpd`. Status gaat naar Pending.
+6. In het klantgesprek komt een notitie met een link naar het DPD-gesprek. Tags worden: `dpd-onderzoek-gestart`, `dpd ticket`, `waiting on dpd`. Beide gesprekken gaan op Closed (in te stellen met `CUSTOMER_STATUS` en `DPD_CONVERSATION_STATUS`). Een antwoord van DPD of de klant opent het gesprek vanzelf weer.
 
 ### Claude
 Met `ANTHROPIC_API_KEY` ingevuld doet Claude twee dingen per onderzoek:

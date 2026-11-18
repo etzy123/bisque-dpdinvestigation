@@ -118,6 +118,7 @@ async function processConversation(convId, deps) {
       text: mail.text,
       attachments: mail.attachments,
       tags: config.dryRun ? [config.tags.test] : config.tags.onDpdConversation,
+      finalStatus: config.dryRun ? null : config.dpdConversationStatus,
       noteText: `DPD-onderzoek (${scenario.label}) voor order ${c.order.name}, pakket ${c.tracking}.\nKlantgesprek: ${customerConvUrl}`,
       });
     } catch (err) {
@@ -155,7 +156,7 @@ async function processConversation(convId, deps) {
       ? [...keep, config.tags.test]
       : [...new Set([...keep, config.tags.done, ...config.tags.addOnSuccess])];
     await helpscout.setTags(convId, newTags);
-    if (!config.dryRun && config.setPending) await helpscout.setStatus(convId, 'pending');
+    if (!config.dryRun && config.customerStatus) await helpscout.setStatus(convId, config.customerStatus);
 
     return { sent: sent.id, tracking: c.tracking, order: c.order.name, dryRun: config.dryRun };
   } finally {

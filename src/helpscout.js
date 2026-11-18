@@ -69,7 +69,7 @@ const MAX_HS_ATTACHMENT = 10 * 1024 * 1024;
 // Stuurt de mail aan DPD als nieuw Help Scout-gesprek vanuit de support-mailbox.
 // Het gesprek wordt in één keer aangemaakt met een uitgaande reply (de mail aan DPD, met bijlagen).
 // Daarna komt er een interne notitie bij met een link naar het klantgesprek.
-async function sendDpdEmail({ mailboxId, to, subject, text, attachments = [], tags = [], noteText, status = 'pending' }) {
+async function sendDpdEmail({ mailboxId, to, subject, text, attachments = [], tags = [], noteText, status = 'pending', finalStatus }) {
   const used = attachments.filter((a) => a.content.length <= MAX_HS_ATTACHMENT);
   const skipped = attachments.filter((a) => a.content.length > MAX_HS_ATTACHMENT).map((a) => a.filename);
 
@@ -103,6 +103,14 @@ async function sendDpdEmail({ mailboxId, to, subject, text, attachments = [], ta
       await addNote(id, toHtml(noteText));
     } catch (e) {
       console.error(`[dpd-gesprek ${id}] notitie toevoegen mislukt:`, e.message);
+    }
+  }
+  // Pas na het versturen sluiten (een nieuw antwoord van DPD heropent het gesprek automatisch)
+  if (finalStatus && finalStatus !== status) {
+    try {
+      await setStatus(id, finalStatus);
+    } catch (e) {
+      console.error(`[dpd-gesprek ${id}] status ${finalStatus} zetten mislukt:`, e.message);
     }
   }
   let number = null;

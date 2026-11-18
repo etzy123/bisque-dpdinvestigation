@@ -50,7 +50,9 @@ module.exports = {
     'Lage rechthoekige kartonnen doos (autolock), zonder logo, dichtgeplakt met groene Bisque Golf tape. Transparante tape of een andere doos betekent dat het pakket na vertrek bij ons is geopend en opnieuw verpakt.'
   ),
 
-  setPending: bool('SET_PENDING', true),
+  // Status na het starten van het onderzoek: closed, pending of active (leeg = niet aanpassen)
+  customerStatus: env('CUSTOMER_STATUS', 'closed'),
+  dpdConversationStatus: env('DPD_CONVERSATION_STATUS', 'closed'),
   // Vangnet: elke X seconden zoeken naar DPD-tags (0 = uit)
   pollSeconds: Number(env('POLL_SECONDS', 60)),
   adminPassword: env('ADMIN_PASSWORD'),
