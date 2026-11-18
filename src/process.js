@@ -60,7 +60,9 @@ async function processConversation(convId, deps) {
     const { c, mail } = prepared;
     const to = config.dryRun ? config.dryRunTo : config.dpdTo;
     const customerConvUrl = `https://secure.helpscout.net/conversation/${conv.id}/${conv.number}`;
-    const sent = await helpscout.sendDpdEmail({
+    let sent;
+    try {
+      sent = await helpscout.sendDpdEmail({
       mailboxId: config.helpscout.mailboxId || conv.mailboxId,
       to,
       subject: mail.subject,
@@ -68,7 +70,14 @@ async function processConversation(convId, deps) {
       attachments: mail.attachments,
       tags: config.dryRun ? [config.tags.test] : config.tags.onDpdConversation,
       noteText: `DPD-onderzoek (${scenario.label}) voor order ${c.order.name}, pakket ${c.tracking}.\nKlantgesprek: ${customerConvUrl}`,
-    });
+      });
+    } catch (err) {
+      // Niet blijven herhalen: trigger-tag eraf, fouttag erop, reden in een notitie
+      console.error(`[gesprek ${convId}] verzenden mislukt:`, err.message);
+      await helpscout.addNote(convId, `DPD-onderzoek NIET gestart (${scenario.label}): verzenden via Help Scout mislukt.\n${err.message}`);
+      await helpscout.setTags(convId, [...keep, config.tags.error]);
+      return { error: err.message };
+    }
 
     const summary = [
       `${config.dryRun ? '[TEST, niet naar DPD] ' : ''}DPD-onderzoek gestart: ${scenario.label}.`,
